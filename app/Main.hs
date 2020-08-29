@@ -10,7 +10,8 @@ main = do
   content <- readFile "dummy.sh"
   let Right x = parse "123" content
   print x
-  print $ prettyText x
+  putStrLn $ prettyText x
   putStrLn "----------------"
-  let y =  replaceExecAt (toCmdIx [0, 1, 0]) (packBashWord "echo") (packBashWord "printf") x
-  print $ prettyText y
+  let y =  replaceExecAt [1, 0, 0, 1, 0, 0, 0] (packBashWord "echo") (packBashWord "printf") x
+  putStrLn $ prettyText y
+  print $ getIxsList (checkExec "echo") y

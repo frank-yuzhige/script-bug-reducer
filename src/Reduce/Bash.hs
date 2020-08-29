@@ -1,7 +1,8 @@
 module Reduce.Bash (
   CmdIx,
-  toCmdIx,
   replaceAllExec,
+  checkExec,
+  getIxsList,
   packBashWord,
   replaceExecAt
 ) where
@@ -15,16 +16,7 @@ import qualified Language.Bash.Word as B (Word, Span)
 data SubElement = PlainText String | Variable String 
                 deriving (Eq, Show)
 
-data CmdIx = CmdIx Int Int Int (Maybe (Int, CmdIx))
-           deriving (Eq, Show)
-
-toCmdIx :: [Int] -> CmdIx
-toCmdIx (a: b: c: next)
-  | null next = ret Nothing
-  | otherwise = ret (Just (n, toCmdIx ns))
-  where
-    ret      = CmdIx a b c
-    (n : ns) = next
+type CmdIx = [Int]
 
 -- toBash :: SubElement -> B
 
@@ -43,28 +35,43 @@ mapList :: (Statement -> Statement) -> List -> List
 mapList f (List stmts) = List $ map f stmts
 
 modifyIxList :: CmdIx -> (ShellCommand -> ShellCommand) -> List -> List
-modifyIxList ix@(CmdIx si _ _ _) f (List stmts) = List [ if i == si then modifyIxPipe ix f s else s | (s, i) <- stmts `zip` [0..]] 
+modifyIxList (si: ix) f (List stmts) = List [ if i == si then modifyIxStmt ix f s else s | (s, i) <- stmts `zip` [0..]] 
 
-modifyIxPipe :: CmdIx -> (ShellCommand -> ShellCommand) -> Statement -> Statement
-modifyIxPipe ix@(CmdIx _ pi _ _) f (Statement andor lt) = Statement (go pi andor) lt
+modifyIxStmt :: CmdIx -> (ShellCommand -> ShellCommand) -> Statement -> Statement
+modifyIxStmt (pi: ix) f (Statement andor lt) = Statement (go pi andor) lt
   where
-    go 0  a         = pipeApply (modifyIxCmd ix f) a
+    go 0  a         = pipeApply (modifyIxPipe ix f) a
     go si (And p n) = And p $ go (si - 1) n
     go si (Or  p n) = Or  p $ go (si - 1) n
 
-modifyIxCmd :: CmdIx -> (ShellCommand -> ShellCommand) -> Pipeline -> Pipeline
-modifyIxCmd ix@(CmdIx _ _ ci mn) f (Pipeline t tp i cmds) = Pipeline t tp i cmds'
+modifyIxPipe :: CmdIx -> (ShellCommand -> ShellCommand) -> Pipeline -> Pipeline
+modifyIxPipe (ci: mn) f (Pipeline t tp i cmds) = Pipeline t tp i cmds'
   where
-    cmds' = [ if i == ci then 
-                case mn of
-                  Nothing     -> Command (f sc) rs
-                  Just (i, n) -> Command (continue i n f sc) rs 
-              else 
-                c 
-            | (c@(Command sc rs), i) <- cmds `zip` [0..]
-            ] 
+    cmds' = [ if i == ci then modifyIxCmd mn f c else c | (c, i) <- cmds `zip` [0..] ] 
+
+modifyIxCmd :: CmdIx -> (ShellCommand -> ShellCommand) -> Command -> Command
+modifyIxCmd mn f c@(Command sc rs) = case mn of
+    []       -> Command (f sc) rs
+    (li: ns) -> Command (continue li ns f sc) rs 
+  where
     continue i next f sc = case sc of 
-      FunctionDef str list | i == 0 -> FunctionDef str (modifyIxList next f list)
+      FunctionDef str list  | i == 0 -> FunctionDef str (goList list)
+      ArithFor    str list  | i == 0 -> ArithFor    str (goList list)  
+      Coproc      str cmd   | i == 0 -> Coproc      str (modifyIxCmd next f cmd)
+      Subshell    list      | i == 0 -> Subshell    (goList list)  
+      Group       list      | i == 0 -> Group       (goList list)  
+      If          l0 l1 ml2 | i == 0 -> If          (goList l0) l1          ml2
+                            | i == 1 -> If          l0          (goList l1) ml2
+                            | i == 2 -> If          l0          l1          (goList <$> ml2)
+      Until       l0 l1     | i == 0 -> Until       (goList l0) l1   
+                            | i == 1 -> Until       l0          (goList l1)   
+      While       l0 l1     | i == 0 -> While       (goList l0) l1   
+                            | i == 1 -> While       l0          (goList l1)   
+      -- TODO: finish all 
+      _ -> error "Invalid cmdix"
+      where
+        goList = modifyIxList next f 
+
 
 pipeNext :: AndOr -> AndOr
 pipeNext (Or  _ p) = p
@@ -91,5 +98,36 @@ replaceExec orig new (SimpleCommand as (exec : args))
   | orig == exec = SimpleCommand as (new : args)
 replaceExec _ _ cmd = cmd 
 
-replaceExecByIxs :: [CmdIx] -> B.Word -> B.Word -> List -> List
-replaceExecByIxs ixs orig new list = undefined
+replaceExecByIxs :: CmdIx -> B.Word -> B.Word -> List -> List
+replaceExecByIxs ixs orig new list = modifyIxList ixs (replaceExec orig new) list
+
+checkExec :: String -> ShellCommand -> Bool
+checkExec e (SimpleCommand _ (exec: _))
+  | exec == packBashWord e = True
+checkExec _ _ = False
+
+getIxsList :: (ShellCommand -> Bool) -> List -> [CmdIx]
+getIxsList p (List stmts) = concat [ map (i :) $ getIxsStmt p s | (s, i) <- stmts `zip` [0..]]
+
+getIxsStmt :: (ShellCommand -> Bool) -> Statement -> [CmdIx]
+getIxsStmt p (Statement andor _) = concat $ go 0 andor
+  where
+    go i (And pp n) = (map (i :) $ getIxsPipe p pp) : go (i + 1) n
+    go i (Or  pp n) = (map (i :) $ getIxsPipe p pp) : go (i + 1) n
+    go i (Last  pp) = [map (i :) $ getIxsPipe p pp]
+
+getIxsPipe :: (ShellCommand -> Bool) -> Pipeline -> [CmdIx]
+getIxsPipe p (Pipeline t tp i cmds) = concat [ map (i :) (getIxsCmd p c) | (c, i) <- cmds `zip` [0..]]
+
+getIxsCmd :: (ShellCommand -> Bool) -> Command -> [CmdIx]
+getIxsCmd p (Command sc rs) = case sc of
+  FunctionDef str list  -> map (0 :) (getIxsList p list)
+  ArithFor    str list  -> map (0 :) (getIxsList p list)
+  Coproc      str cmd   -> map (0 :) (getIxsCmd  p cmd)
+  Subshell    list      -> map (0 :) (getIxsList p list)
+  Group       list      -> map (0 :) (getIxsList p list)
+  If          l0 l1 ml2 -> concat [ map (i :) (getIxsList p l) | (l, i) <- ([l0, l1] ++ maybeToList ml2) `zip` [0..] ]
+  Until       l0 l1     -> concat [ map (i :) (getIxsList p l) | (l, i) <- [l0, l1] `zip` [0..] ]
+  While       l0 l1     -> concat [ map (i :) (getIxsList p l) | (l, i) <- [l0, l1] `zip` [0..] ]  
+  _                     -> [[]]
+  
