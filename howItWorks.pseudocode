@@ -1,0 +1,25 @@
+args: $compiler $new-compiler $make-target $interestingness-test.sh
+
+begin
+
+copy original Makefile to Makefile.orig
+(rules, assigns) <- parse Makefile
+old-compiler = find pattern ($compiler = ...) in assigns
+
+suspicious = all <- all targets from Makefile
+innocents = []
+do
+  inspects = select 1/2 from suspicious
+  if (make; interestingness test passes) then
+    suspicious -= inspects
+  else
+    suspicious = inspects
+  fi 
+while (suspicious.length > 1)
+
+if (suspicious is empty) then
+  error ("cannot find suspicious ones")
+  exit
+fi
+
+
