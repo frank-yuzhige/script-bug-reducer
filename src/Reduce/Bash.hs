@@ -120,7 +120,7 @@ getIxsPipe :: (ShellCommand -> Bool) -> Pipeline -> [CmdIx]
 getIxsPipe p (Pipeline t tp i cmds) = concat [ map (i :) (getIxsCmd p c) | (c, i) <- cmds `zip` [0..]]
 
 getIxsCmd :: (ShellCommand -> Bool) -> Command -> [CmdIx]
-getIxsCmd p (Command sc rs) = case sc of
+getIxsCmd p (Command sc rs) = check $ case sc of
   FunctionDef str list  -> map (0 :) (getIxsList p list)
   ArithFor    str list  -> map (0 :) (getIxsList p list)
   Coproc      str cmd   -> map (0 :) (getIxsCmd  p cmd)
@@ -129,5 +129,7 @@ getIxsCmd p (Command sc rs) = case sc of
   If          l0 l1 ml2 -> concat [ map (i :) (getIxsList p l) | (l, i) <- ([l0, l1] ++ maybeToList ml2) `zip` [0..] ]
   Until       l0 l1     -> concat [ map (i :) (getIxsList p l) | (l, i) <- [l0, l1] `zip` [0..] ]
   While       l0 l1     -> concat [ map (i :) (getIxsList p l) | (l, i) <- [l0, l1] `zip` [0..] ]  
-  _                     -> [[]]
+  _                     -> []
+  where
+    check = if p sc then ([] :) else id
   
