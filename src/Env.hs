@@ -13,10 +13,8 @@ data Env = Env {
   ccVar               :: Text,
   xccVar              :: Text,
   xccCompiler         :: Text,
-  makefilePath        :: FilePath,
-  makeTarget          :: [String],          
+  bashPath            :: FilePath,
   interestingnessPath :: FilePath,
-
   recoverMakefile     :: Bool
 } deriving (Eq, Show)
 
@@ -33,7 +31,7 @@ parseArg env arg@('-': xs)
     "cvar"   -> Right env { ccVar               = pack rs }
     "xcvar"  -> Right env { xccVar              = pack rs }
     "xcc"    -> Right env { xccCompiler         = pack rs }
-    "target" -> Right env { makeTarget          = [rs] }
+    "path"   -> Right env { bashPath            = rs }
     "ipath"  -> Right env { interestingnessPath = rs }
     _        -> err
   where
@@ -48,8 +46,7 @@ initEnv = Env {
   ccVar  = "CC",
   xccVar = "XCC",
   xccCompiler = "clang",
-  makefilePath = "Makefile",
-  makeTarget = [],
+  bashPath = "./build.sh",
   interestingnessPath = "./itest.sh",
   recoverMakefile = False
 }

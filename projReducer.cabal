@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7e015f11f48cf70c17118901b5e0d47309fed53defd9cf39f8e99be77c0181e8
+-- hash: 53ec9d4b5d05613144679728e359242b71e751a29e58a9aaff2d2b24329c8306
 
 name:           projReducer
 version:        0.1.0.0
@@ -32,6 +32,7 @@ library
       Make.Make
       Make.Reducer
       Reduce.Bash
+      Reduce.Reducer
       Utils.DList
   other-modules:
       Paths_projReducer

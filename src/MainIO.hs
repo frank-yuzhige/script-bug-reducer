@@ -48,8 +48,8 @@ reduceToTarget env = do
     ccvar   = ccVar               env
     xccvar  = xccVar              env
     xcc     = xccCompiler         env
-    mpath   = makefilePath        env
-    targets = makeTarget          env
+    mpath   = "Makefile"
+    targets = "all"          
     iPath   = interestingnessPath env
     recover = recoverMakefile     env
 

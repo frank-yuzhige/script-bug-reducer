@@ -1,6 +1,7 @@
 module Reduce.Bash (
   CmdIx,
   replaceAllExec,
+  modifyIxList,
   checkExec,
   getIxsList,
   packBashWord,
