@@ -5,7 +5,7 @@ module Reduce.Bash (
   checkExec,
   getIxsList,
   packBashWord,
-  replaceExecAt
+  replaceExec
 ) where
 
 

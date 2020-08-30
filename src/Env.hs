@@ -10,9 +10,9 @@ import Text.Printf
 import Data.Text (Text, pack, unpack)
 
 data Env = Env {
-  ccVar               :: Text,
-  xccVar              :: Text,
-  xccCompiler         :: Text,
+  ccVar               :: String,
+  xccVar              :: String,
+  xccCompiler         :: String,
   bashPath            :: FilePath,
   interestingnessPath :: FilePath,
   recoverMakefile     :: Bool
@@ -28,9 +28,9 @@ parseArg env arg@('-': xs)
     "no-recover-make" -> Right env { recoverMakefile = False } 
     _                 -> err
   | otherwise = case ps of
-    "cvar"   -> Right env { ccVar               = pack rs }
-    "xcvar"  -> Right env { xccVar              = pack rs }
-    "xcc"    -> Right env { xccCompiler         = pack rs }
+    "cvar"   -> Right env { ccVar               = rs }
+    "xcvar"  -> Right env { xccVar              = rs }
+    "xcc"    -> Right env { xccCompiler         = rs }
     "path"   -> Right env { bashPath            = rs }
     "ipath"  -> Right env { interestingnessPath = rs }
     _        -> err
@@ -50,3 +50,6 @@ initEnv = Env {
   interestingnessPath = "./itest.sh",
   recoverMakefile = False
 }
+
+printEnv :: (PrintfType f) => Env -> f
+printEnv env = printf (show env)

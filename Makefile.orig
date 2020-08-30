@@ -1,3 +1,4 @@
+CC=gcc
 # Makefile 内容
 SRCS:=programA.c programB.c programC.c
 
