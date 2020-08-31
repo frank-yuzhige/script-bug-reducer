@@ -1,6 +1,0 @@
-{
-  "files.associations": {
-    "*.lhs": "literate haskell",
-    "stdio.h": "c"
-  }
-}

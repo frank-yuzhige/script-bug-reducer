@@ -1,9 +1,14 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Reduce.Bash (
   CmdIx,
   replaceAllExec,
   modifyIxList,
   checkExec,
   getIxsList,
+  showByIxList,
   packBashWord,
   replaceExec
 ) where
@@ -11,6 +16,7 @@ module Reduce.Bash (
 
 import Data.Maybe
 import Language.Bash.Syntax
+import Language.Bash.Pretty
 import Language.Bash.Word hiding (Word)
 import qualified Language.Bash.Word as B (Word, Span)  
 
@@ -34,6 +40,35 @@ replaceExecAt ix = (modifyIxList ix .) . replaceExec
 
 mapList :: (Statement -> Statement) -> List -> List
 mapList f (List stmts) = List $ map f stmts
+
+showByIxList :: CmdIx -> List -> String
+showByIxList [] l = prettyText l
+showByIxList (si: ix) (List stmts) = showByIxStmt ix (stmts !! si) 
+
+showByIxStmt :: CmdIx -> Statement -> String
+showByIxStmt [] s                          = prettyText s
+showByIxStmt (pi: ix) (Statement andor lt) = showByIxPipe ix $ getPipe (andor !!* pi)
+
+showByIxPipe :: CmdIx -> Pipeline -> String
+showByIxPipe [] s = prettyText s
+showByIxPipe (si: ix) (Pipeline t tp i cmds) = showByIxCmd ix $ (cmds !! si)
+
+showByIxCmd :: CmdIx -> Command -> String
+showByIxCmd [] s = prettyText s
+showByIxCmd (i: ns) (Command sc rs) = case sc of
+  FunctionDef str list  | i == 0 -> showByIxList ns list
+  ArithFor    str list  | i == 0 -> showByIxList ns list
+  Coproc      str cmd   | i == 0 -> showByIxCmd  ns cmd
+  Subshell    list      | i == 0 -> showByIxList ns list
+  Group       list      | i == 0 -> showByIxList ns list 
+  If          l0 l1 ml2 | i == 0 -> showByIxList ns l0
+                        | i == 1 -> showByIxList ns l1
+                        | i == 2 -> case ml2 of Just l2 -> showByIxList ns l2
+  Until       l0 l1     | i == 0 -> showByIxList ns l0  
+                        | i == 1 -> showByIxList ns l1  
+  While       l0 l1     | i == 0 -> showByIxList ns l0
+                        | i == 1 -> showByIxList ns l1
+  _                              -> error "Invalid cmd id"
 
 modifyIxList :: CmdIx -> (ShellCommand -> ShellCommand) -> List -> List
 modifyIxList (si: ix) f (List stmts) = List [ if i == si then modifyIxStmt ix f s else s | (s, i) <- stmts `zip` [0..]] 
@@ -134,3 +169,13 @@ getIxsCmd p (Command sc rs) = check $ case sc of
   where
     check = if p sc then ([] :) else id
   
+
+(!!*) :: AndOr -> Int -> AndOr
+a !!* 0 = a
+(And _ n) !!* i = n !!* (i - 1)
+(Or  _ n) !!* i = n !!* (i - 1)
+
+getPipe :: AndOr -> Pipeline
+getPipe (And p _) = p
+getPipe (Or  p _) = p
+getPipe (Last  p) = p

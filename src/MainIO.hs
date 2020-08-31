@@ -9,6 +9,7 @@ import System.Environment
 import System.Exit
 import System.Process
 import System.Directory(copyFile)
+import Data.List
 import Language.Bash.Syntax
 import Language.Bash.Parse
 import Language.Bash.Pretty
@@ -27,30 +28,30 @@ mainIO = do
     menv <- liftIO $ parseArgs <$> getArgs
     env  <- except menv
     liftIO $ printf "%s\n" (show env)
-    reduceToCmdIx env
+    reduceToCmd env
   case target of
     Left err -> printf "Error: %s\n" err
-    Right t  -> printf "Found error target: %s\n" (show t)
+    Right t  -> printf "Found error command: %s\n" (show t)
 
-reduceToCmdIx :: Env -> ExceptT String IO CmdIx
-reduceToCmdIx env = do
-  stext <- liftIO $ readFile mpath
-  let backupPath = mpath ++ ".orig"
+reduceToCmd :: Env -> ExceptT String IO String
+reduceToCmd env = do
+  stext <- liftIO $ readFile fpath
+  let backupPath = fpath ++ ".orig"
   logIO $ printf "Making backup for the original bash script to %s ..." backupPath
-  liftIO $ writeFile (mpath ++ ".orig") stext
-  let bash = parse "" stext
-  iniR   <- except $ showErr $ initReducer (checkExec ccvar) (replaceExec (packBashWord ccvar) (packBashWord xccvar)) <$> bash
-  target <- runReduction iniR mpath iPath
+  liftIO $ writeFile (fpath ++ ".orig") stext
+  bash <- except $ showErr $ parse "" stext
+  let iniR = initReducer (checkExec ccvar) (replaceExec (packBashWord ccvar) (packBashWord xccvar)) bash
+  liftIO $ printf "All targets: %s\n" (intercalate "," (map show (getCandIxs iniR)))
+  target <- runReduction iniR fpath ipath
   liftIO $ when recover $ do
-    copyFile backupPath mpath
+    copyFile backupPath fpath
     putStrLn "Recovered original script"
-  return target
+  return $ showByIxList target bash
   where
     ccvar   = ccVar               env
     xccvar  = xccVar              env
-    xcc     = xccCompiler         env
-    mpath   = bashPath            env
-    iPath   = interestingnessPath env
+    fpath   = bashPath            env
+    ipath   = interestingnessPath env
     recover = recoverMakefile     env
 
 runReduction :: Reducer -> FilePath -> FilePath -> ExceptT String IO CmdIx
@@ -72,19 +73,26 @@ reduceIteration reducer fpath ipath = do
   liftIO $ printf "Inspecting %d target%s: %s\n" 
     count 
     (if count > 1 then "s" else "" :: String) 
-    (unwords $ [ show ix | ix <- inss ])
+    (unwords $ map show inss)
   isPass <- liftIO $ testMakefile fpath ipath mf 
   except $ reduceFeedback reducer inss isPass
     
 testMakefile :: FilePath -> FilePath -> List -> IO Bool
 testMakefile fpath ipath bash = do
   writeFile fpath $ prettyText bash
-  (code, out, err) <- readProcessWithExitCode ipath [] ""
+  putStrLn "---------------"
+  putStrLn $ prettyText bash
+  putStrLn "---------------"
+  (code, out, err) <- readProcessWithExitCode "sh" [ipath] ""
   if code == ExitSuccess then do
-    putStrLn "pass"
+    putStrLn ">> PASS"
+    putStrLn out
     return True
   else do
-    putStrLn "fail"
+    putStrLn ">> FAIL"
+    putStrLn out
+    putStrLn "-------------"
+    putStrLn err
     return False
 
 logIO :: MonadIO m => String -> m ()

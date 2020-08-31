@@ -12,7 +12,6 @@ import Data.Text (Text, pack, unpack)
 data Env = Env {
   ccVar               :: String,
   xccVar              :: String,
-  xccCompiler         :: String,
   bashPath            :: FilePath,
   interestingnessPath :: FilePath,
   recoverMakefile     :: Bool
@@ -24,13 +23,12 @@ parseArgs = foldM parseArg initEnv
 parseArg :: Env -> String -> Either String Env
 parseArg env arg@('-': xs)
   | null qs   = case ps of
-    "recover-make"    -> Right env { recoverMakefile = True }
-    "no-recover-make" -> Right env { recoverMakefile = False } 
+    "recover"    -> Right env { recoverMakefile = True }
+    "no-recover" -> Right env { recoverMakefile = False } 
     _                 -> err
   | otherwise = case ps of
     "cvar"   -> Right env { ccVar               = rs }
     "xcvar"  -> Right env { xccVar              = rs }
-    "xcc"    -> Right env { xccCompiler         = rs }
     "path"   -> Right env { bashPath            = rs }
     "ipath"  -> Right env { interestingnessPath = rs }
     _        -> err
@@ -43,9 +41,8 @@ parseArg _ arg = Left $ printf "Error: Invalid argument \"%s\"" arg
 
 initEnv :: Env
 initEnv = Env {
-  ccVar  = "CC",
-  xccVar = "XCC",
-  xccCompiler = "clang",
+  ccVar  = "gcc",
+  xccVar = "clang",
   bashPath = "./build.sh",
   interestingnessPath = "./itest.sh",
   recoverMakefile = False

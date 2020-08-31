@@ -1,3 +1,0 @@
-gcc-6 -c good.c 
-gcc-6 -fgnu-tm -w -O1 -c bug.c
-gcc-6 good.o bug.o -o 
