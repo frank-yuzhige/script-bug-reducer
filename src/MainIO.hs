@@ -42,11 +42,17 @@ reduceToCmd env = do
   bash <- except $ showErr $ parse "" stext
   let iniR = initReducer (checkExec ccvar) (replaceExec (packBashWord ccvar) (packBashWord xccvar)) bash
   liftIO $ printf "All targets: %s\n" (intercalate "," (map show (getCandIxs iniR)))
-  target <- runReduction iniR fpath ipath
-  liftIO $ when recover $ do
-    copyFile backupPath fpath
-    putStrLn "Recovered original script"
-  return $ showByIxList target bash
+  -- run sanity interestingness test
+  (code, out, err) <- liftIO $ readProcessWithExitCode "sh" [ipath] ""
+  if (code /= ExitSuccess) then do 
+    target <- runReduction iniR fpath ipath
+    liftIO $ when recover $ do
+      copyFile backupPath fpath
+      putStrLn "Recovered original script"
+    return $ showByIxList target bash
+  else do
+    liftIO $ putStrLn "Interestingness test succeeds!"
+    except $ Left "Interestingness test succeeds"
   where
     ccvar   = ccVar               env
     xccvar  = xccVar              env

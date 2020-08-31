@@ -1,0 +1,7 @@
+bug.c: In function ‘buggyFun’:
+bug.c:17:5: internal compiler error: Segmentation fault
+ int buggyFun() {
+     ^~~~~~~~
+Please submit a full bug report,
+with preprocessed source if appropriate.
+See <file:///usr/share/doc/gcc-7/README.Bugs> for instructions.
