@@ -30,10 +30,10 @@ type CmdIx = [Int]
 packBashWord :: String -> B.Word
 packBashWord = map Char
 
-replaceAllExec :: B.Word -> B.Word -> List -> List
+replaceAllExec :: String -> String -> List -> List
 replaceAllExec ex1 ex2 (List stmts) = List [ Statement (f andor) term | (Statement andor term) <- stmts ]
   where
-    f = mapPipeline (changeCmdInPipeline (fmap (changeShellCommand (replaceExec ex1 ex2)))) 
+    f = mapPipeline (changeCmdInPipeline (fmap (changeShellCommand (replaceExec (packBashWord ex1) (packBashWord ex2))))) 
 
 replaceExecAt :: CmdIx -> B.Word -> B.Word -> List -> List
 replaceExecAt ix = (modifyIxList ix .) . replaceExec

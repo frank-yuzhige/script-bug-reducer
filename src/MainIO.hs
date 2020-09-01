@@ -37,28 +37,55 @@ reduceToCmd :: Env -> ExceptT String IO String
 reduceToCmd env = do
   stext <- liftIO $ readFile fpath
   let backupPath = fpath ++ ".orig"
-  logIO $ printf "Making backup for the original bash script to %s ..." backupPath
-  liftIO $ writeFile (fpath ++ ".orig") stext
+  liftIO $ do 
+    printf "Making backup for the original bash script to %s ...\n" backupPath
+    writeFile (fpath ++ ".orig") stext
   bash <- except $ showErr $ parse "" stext
   let iniR = initReducer (checkExec ccvar) (replaceExec (packBashWord ccvar) (packBashWord xccvar)) bash
   liftIO $ printf "All targets: %s\n" (intercalate "," (map show (getCandIxs iniR)))
   -- run sanity interestingness test
-  (code, out, err) <- liftIO $ readProcessWithExitCode "sh" [ipath] ""
-  if (code /= ExitSuccess) then do 
-    target <- runReduction iniR fpath ipath
-    liftIO $ when recover $ do
+  mSanityError <- liftIO $ runSanityCheck env bash
+  case mSanityError of
+    Just err -> do
+      liftIO $ putStrLn err
+      runRecover backupPath
+      except $ Left "Sanity test failed"
+    Nothing  -> do 
+      target <- runReduction iniR fpath ipath
+      runRecover backupPath
+      return $ showByIxList target bash
+  where
+    ccvar      = ccVar               env
+    xccvar     = xccVar              env
+    fpath      = bashPath            env
+    ipath      = interestingnessPath env
+    recover    = recoverMakefile     env
+    runRecover :: FilePath -> ExceptT String IO ()
+    runRecover backupPath = liftIO $ when recover $ do
       copyFile backupPath fpath
       putStrLn "Recovered original script"
-    return $ showByIxList target bash
+
+
+runSanityCheck :: Env -> List -> IO (Maybe String)
+runSanityCheck env bash = do
+  (code, out, err) <- runItest "[Sanity Check]: Running the original interestingness test script..."
+  if (code /= ExitSuccess) then do
+    let bash' = replaceAllExec ccvar xccvar bash
+    writeFile fpath $ prettyText bash' 
+    (code', out', err') <- runItest "[Sanity Check]: Running the interestingness test script with CC replaced..."
+    if (code' == ExitSuccess) then
+      return Nothing
+    else 
+      return $ Just $ printf "2nd sanity test failed! Expecting exitcode = %s, but actual exitcode = %s" (show ExitSuccess) (show code')
   else do
-    liftIO $ putStrLn "Interestingness test succeeds!"
-    except $ Left "Interestingness test succeeds"
+     return $ Just $ printf "1st sanity test failed! Expecting exitcode to be ExitFailure, but actual exitcode = ExitSuccess"
   where
-    ccvar   = ccVar               env
-    xccvar  = xccVar              env
-    fpath   = bashPath            env
-    ipath   = interestingnessPath env
-    recover = recoverMakefile     env
+    ccvar          = ccVar               env
+    xccvar         = xccVar              env
+    fpath          = bashPath            env
+    ipath          = interestingnessPath env
+    runItest msg   = putStrLn msg >> liftIO (readProcessWithExitCode "sh" [ipath] "")
+
 
 runReduction :: Reducer -> FilePath -> FilePath -> ExceptT String IO CmdIx
 runReduction r fpath ipath = do
@@ -80,11 +107,11 @@ reduceIteration reducer fpath ipath = do
     count 
     (if count > 1 then "s" else "" :: String) 
     (unwords $ map show inss)
-  isPass <- liftIO $ testMakefile fpath ipath mf 
+  isPass <- liftIO $ testScript fpath ipath mf 
   except $ reduceFeedback reducer inss isPass
     
-testMakefile :: FilePath -> FilePath -> List -> IO Bool
-testMakefile fpath ipath bash = do
+testScript :: FilePath -> FilePath -> List -> IO Bool
+testScript fpath ipath bash = do
   writeFile fpath $ prettyText bash
   putStrLn "---------------"
   putStrLn $ prettyText bash
