@@ -72,6 +72,7 @@ runSanityCheck env bash = do
   if (code /= ExitSuccess) then do
     let bash' = replaceAllExec ccvar xccvar bash
     writeFile fpath $ prettyText bash' 
+    putStrLn $ prettyText bash'
     (code', out', err') <- runItest "[Sanity Check]: Running the interestingness test script with CC replaced..."
     if (code' == ExitSuccess) then
       return Nothing

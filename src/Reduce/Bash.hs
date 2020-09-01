@@ -31,9 +31,12 @@ packBashWord :: String -> B.Word
 packBashWord = map Char
 
 replaceAllExec :: String -> String -> List -> List
-replaceAllExec ex1 ex2 (List stmts) = List [ Statement (f andor) term | (Statement andor term) <- stmts ]
+replaceAllExec ex1 ex2 list = foldr (\ix -> replaceExecAt ix ex1' ex2') list ixs
   where
-    f = mapPipeline (changeCmdInPipeline (fmap (changeShellCommand (replaceExec (packBashWord ex1) (packBashWord ex2))))) 
+    ex1' = packBashWord ex1
+    ex2' = packBashWord ex2
+    ixs  = getIxsList (checkExec ex1) list
+    f = mapPipeline (changeCmdInPipeline (map (changeShellCommand (replaceExec ex1' ex2')))) 
 
 replaceExecAt :: CmdIx -> B.Word -> B.Word -> List -> List
 replaceExecAt ix = (modifyIxList ix .) . replaceExec
