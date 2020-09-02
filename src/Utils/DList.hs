@@ -1,6 +1,13 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 module Utils.DList (
-  DList (..)
+  DList (..),
+  toDList,
+  fromDList,
 ) where
+
+import Data.String
+import Text.Printf
 
 newtype DList a = DList ([a] -> [a])
 
@@ -15,3 +22,6 @@ instance Semigroup (DList a) where
 
 instance Monoid (DList a) where
   mempty = DList id
+
+instance IsString (DList Char) where
+  fromString = toDList

@@ -1,3 +1,3 @@
 #!/bin/bash
 
-stack run -- -cvar=./run.sh -xcvar=echo -recover
+stack run -- -cvar=./run.sh -xcvar=echo -recover $@

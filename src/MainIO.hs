@@ -25,9 +25,8 @@ import Control.Monad.Except
 mainIO :: IO ()
 mainIO = do
   target <- runExceptT $ do 
-    menv <- liftIO $ parseArgs <$> getArgs
-    env  <- except menv
-    liftIO $ printf "%s\n" (show env)
+    (env, log) <- liftIO $ parseArgs <$> getArgs
+    liftIO $ putStrLn log
     reduceToCmd env
   case target of
     Left err -> printf "Error: %s\n" err
@@ -42,7 +41,7 @@ reduceToCmd env = do
     writeFile (fpath ++ ".orig") stext
   bash <- except $ showErr $ parse "" stext
   let iniR = initReducer (checkExec ccvar) (replaceExec (packBashWord ccvar) (packBashWord xccvar)) bash
-  liftIO $ printf "All targets: %s\n" (intercalate "," (map show (getCandIxs iniR)))
+  when debug $ liftIO $ printf "All targets: %s\n" (intercalate "," (map show (getCandIxs iniR)))
   -- run sanity interestingness test
   mSanityError <- liftIO $ runSanityCheck env bash
   case mSanityError of
@@ -51,7 +50,7 @@ reduceToCmd env = do
       runRecover backupPath
       except $ Left "Sanity test failed"
     Nothing  -> do 
-      target <- runReduction iniR fpath ipath
+      target <- runReduction iniR env 1
       runRecover backupPath
       return $ showByIxList target bash
   where
@@ -60,6 +59,7 @@ reduceToCmd env = do
     fpath      = bashPath            env
     ipath      = interestingnessPath env
     recover    = recoverMakefile     env
+    debug      = isDebug             env
     runRecover :: FilePath -> ExceptT String IO ()
     runRecover backupPath = liftIO $ when recover $ do
       copyFile backupPath fpath
@@ -72,7 +72,7 @@ runSanityCheck env bash = do
   if (code /= ExitSuccess) then do
     let bash' = replaceAllExec ccvar xccvar bash
     writeFile fpath $ prettyText bash' 
-    putStrLn $ prettyText bash'
+    when debug $ putStrLn $ prettyText bash'
     (code', out', err') <- runItest "[Sanity Check]: Running the interestingness test script with CC replaced..."
     if (code' == ExitSuccess) then
       return Nothing
@@ -85,49 +85,61 @@ runSanityCheck env bash = do
     xccvar         = xccVar              env
     fpath          = bashPath            env
     ipath          = interestingnessPath env
+    debug          = isDebug             env
     runItest msg   = putStrLn msg >> liftIO (readProcessWithExitCode "sh" [ipath] "")
 
 
-runReduction :: Reducer -> FilePath -> FilePath -> ExceptT String IO CmdIx
-runReduction r fpath ipath = do
-  r' <- reduceIteration r fpath ipath
+runReduction :: Reducer -> Env -> Int -> ExceptT String IO CmdIx
+runReduction r env count = do
+  liftIO $ printf "Running iteration no.[%d]...\n" count
+  r' <- reduceIteration r env
   maybe (continue r') found (terminateReduce r') 
   where    
     continue :: Reducer -> ExceptT String IO CmdIx
     continue r = do
       liftIO $ putStrLn $ printf "continue..."
-      runReduction r fpath ipath
+      runReduction r env (count + 1)
     found :: CmdIx -> ExceptT String IO CmdIx
     found t = logIO "found!" >> return t
 
-reduceIteration :: Reducer -> FilePath -> FilePath -> ExceptT String IO Reducer
-reduceIteration reducer fpath ipath = do
+reduceIteration :: Reducer -> Env -> ExceptT String IO Reducer
+reduceIteration reducer env = do
+  when debug $ liftIO $ printf "  Generating new script\n"
   (mf, inss) <- except $ genNewBash reducer
   let count = length inss
-  liftIO $ printf "Inspecting %d target%s: %s\n" 
+  when debug $ liftIO $ printf "  Inspecting %d target%s: %s\n" 
     count 
     (if count > 1 then "s" else "" :: String) 
     (unwords $ map show inss)
-  isPass <- liftIO $ testScript fpath ipath mf 
+  when debug $ liftIO $ printf "  Running interestingness test: \n"
+  isPass <- liftIO $ testScript env mf 
   except $ reduceFeedback reducer inss isPass
+  where 
+    debug = isDebug env
     
-testScript :: FilePath -> FilePath -> List -> IO Bool
-testScript fpath ipath bash = do
+testScript :: Env -> List -> IO Bool
+testScript env bash = do
   writeFile fpath $ prettyText bash
-  putStrLn "---------------"
-  putStrLn $ prettyText bash
-  putStrLn "---------------"
+  when debug $ do
+    putStrLn "---------------"
+    putStrLn $ prettyText bash
+    putStrLn "---------------"
   (code, out, err) <- readProcessWithExitCode "sh" [ipath] ""
   if code == ExitSuccess then do
-    putStrLn ">> PASS"
-    putStrLn out
+    putStrLn "PASS"
+    when debug $ putStrLn out
     return True
   else do
-    putStrLn ">> FAIL"
-    putStrLn out
-    putStrLn "-------------"
-    putStrLn err
+    putStrLn "FAIL"
+    when debug $ do
+      putStrLn out
+      putStrLn "-------------"
+      putStrLn err
     return False
+  where
+    fpath = bashPath            env
+    ipath = interestingnessPath env
+    debug = isDebug             env
 
 logIO :: MonadIO m => String -> m ()
 logIO = liftIO . putStrLn

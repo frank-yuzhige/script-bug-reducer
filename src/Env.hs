@@ -7,37 +7,60 @@ module Env (
 
 import Control.Monad
 import Text.Printf
+import Utils.DList
 import Data.Text (Text, pack, unpack)
+import Data.String
+
+import Control.Monad.Trans.Writer
+
+type WString = DList Char
 
 data Env = Env {
   ccVar               :: String,
   xccVar              :: String,
   bashPath            :: FilePath,
   interestingnessPath :: FilePath,
-  recoverMakefile     :: Bool
+  recoverMakefile     :: Bool,
+  isDebug             :: Bool
 } deriving (Eq, Show)
 
-parseArgs :: [String] -> Either String Env
-parseArgs = foldM parseArg initEnv 
+parseArgs :: [String] -> (Env, String)
+parseArgs args = (e, fromDList w)
+  where (e, w) = runWriter $ foldM parseArg initEnv args
 
-parseArg :: Env -> String -> Either String Env
+parseArg :: Env -> String -> Writer WString Env
 parseArg env arg@('-': xs)
   | null qs   = case ps of
-    "recover"    -> Right env { recoverMakefile = True }
-    "no-recover" -> Right env { recoverMakefile = False } 
-    _                 -> err
+    "recover"    -> record 
+      "Recover script after reduction" 
+      env { recoverMakefile = True }
+    "no-recover" -> record
+      "Do not recover script after reduction"
+      env { recoverMakefile = False } 
+    "debug"      -> record 
+      "DEBUG ON!"
+      env { isDebug = True } 
+    _            -> warn $ printf "Invalid argument \"%s\"" arg
   | otherwise = case ps of
-    "cvar"   -> Right env { ccVar               = rs }
-    "xcvar"  -> Right env { xccVar              = rs }
-    "path"   -> Right env { bashPath            = rs }
-    "ipath"  -> Right env { interestingnessPath = rs }
-    _        -> err
+    "cvar"   -> record
+      (printf "Set cc=%s" rs)
+      env { ccVar = rs }
+    "xcvar"  -> record
+      (printf "Set xcc=%s" rs)
+      env { xccVar = rs }
+    "path"   -> record
+      (printf "Set build script=%s" rs)
+      env { bashPath = rs }
+    "ipath"  -> record
+      (printf "Set interestingness test script=%s" rs)
+      env { interestingnessPath = rs }
+    _        -> warn $ printf "Invalid argument \"%s\"" arg
   where
     (ps, qs) = break (== '=') xs
     rs       = tail qs
-    err      = Left $ printf "Error: Invalid argument \"%s\"" arg
+    warn w   = tell (toDList (w <> "\n")) >> return env 
 
-parseArg _ arg = Left $ printf "Error: Invalid argument \"%s\"" arg
+parseArg env arg = tell (toDList (printf "Error: Invalid argument \"%s\"\n" arg)) >> return env
 
 initEnv :: Env
 initEnv = Env {
@@ -45,8 +68,12 @@ initEnv = Env {
   xccVar = "clang",
   bashPath = "./build.sh",
   interestingnessPath = "./itest.sh",
-  recoverMakefile = False
+  recoverMakefile = False,
+  isDebug = False
 }
 
 printEnv :: (PrintfType f) => Env -> f
 printEnv env = printf (show env)
+
+record :: Monad m => [Char] -> b -> WriterT (DList Char) m b
+record w a = tell (toDList $ w <> "\n") >> return a
