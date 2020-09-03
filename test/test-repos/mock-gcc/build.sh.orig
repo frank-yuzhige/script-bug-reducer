@@ -1,0 +1,10 @@
+./gcc-bug.sh 1;
+./gcc-good.sh 2;
+./gcc-good.sh 3;
+./gcc-bug.sh 4;
+./gcc-bug.sh 5;
+./gcc-bug.sh 6;
+./gcc-bug.sh bug;
+./gcc-bug.sh 7;
+./gcc-bug.sh 8;
+./link.sh 1 2 3 4 5 6 bug 7 8;
