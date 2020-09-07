@@ -1,6 +1,6 @@
-./gcc-good.sh 1;
-./gcc-good.sh 2;
-./gcc-good.sh 3;
+./gcc-bug.sh 1;
+./gcc-bug.sh 2;
+./gcc-bug.sh 3;
 ./gcc-bug.sh 4;
 ./gcc-bug.sh 5;
 ./gcc-bug.sh 6;

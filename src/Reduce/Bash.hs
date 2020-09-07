@@ -1,9 +1,13 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 
 module Reduce.Bash (
   CmdIx,
+  colon,
+  modSC,
   replaceAllExec,
   modifyIxList,
   checkExec,
@@ -14,32 +18,33 @@ module Reduce.Bash (
 ) where
 
 
-import Data.Maybe
+import Data.Maybe ( maybeToList )
 import Language.Bash.Syntax
-import Language.Bash.Pretty
-import Language.Bash.Word hiding (Word)
-import qualified Language.Bash.Word as B (Word, Span)  
+import Language.Bash.Pretty ( prettyText )
+import Language.Bash.Word ( Span(Char) )
+import qualified Language.Bash.Word as B ( Word, Span )  
 
 data SubElement = PlainText String | Variable String 
                 deriving (Eq, Show)
 
 type CmdIx = [Int]
 
+-- shit :: CmdIx -> List -> Stmt
 -- toBash :: SubElement -> B
 
 packBashWord :: String -> B.Word
 packBashWord = map Char
 
-replaceAllExec :: String -> String -> List -> List
-replaceAllExec ex1 ex2 list = foldr (\ix -> replaceExecAt ix ex1' ex2') list ixs
+replaceAllExec :: String -> String -> [CmdIx] -> List -> List
+replaceAllExec ex1 ex2 cached list = 
+  foldr (\ix -> if ix `elem` cached then id else replaceExecAt ix ex1' ex2') list ixs
   where
     ex1' = packBashWord ex1
     ex2' = packBashWord ex2
     ixs  = getIxsList (checkExec ex1) list
-    f = mapPipeline (changeCmdInPipeline (map (changeShellCommand (replaceExec ex1' ex2')))) 
 
 replaceExecAt :: CmdIx -> B.Word -> B.Word -> List -> List
-replaceExecAt ix = (modifyIxList ix .) . replaceExec
+replaceExecAt ix = (modifyIxList ix .) . ((modSC .) . replaceExec)
 
 mapList :: (Statement -> Statement) -> List -> List
 mapList f (List stmts) = List $ map f stmts
@@ -73,24 +78,24 @@ showByIxCmd (i: ns) (Command sc rs) = case sc of
                         | i == 1 -> showByIxList ns l1
   _                              -> error "Invalid cmd id"
 
-modifyIxList :: CmdIx -> (ShellCommand -> ShellCommand) -> List -> List
+modifyIxList :: CmdIx -> (Command -> Command) -> List -> List
 modifyIxList (si: ix) f (List stmts) = List [ if i == si then modifyIxStmt ix f s else s | (s, i) <- stmts `zip` [0..]] 
 
-modifyIxStmt :: CmdIx -> (ShellCommand -> ShellCommand) -> Statement -> Statement
+modifyIxStmt :: CmdIx -> (Command -> Command) -> Statement -> Statement
 modifyIxStmt (pi: ix) f (Statement andor lt) = Statement (go pi andor) lt
   where
     go 0  a         = pipeApply (modifyIxPipe ix f) a
     go si (And p n) = And p $ go (si - 1) n
     go si (Or  p n) = Or  p $ go (si - 1) n
 
-modifyIxPipe :: CmdIx -> (ShellCommand -> ShellCommand) -> Pipeline -> Pipeline
+modifyIxPipe :: CmdIx -> (Command -> Command) -> Pipeline -> Pipeline
 modifyIxPipe (ci: mn) f (Pipeline t tp i cmds) = Pipeline t tp i cmds'
   where
     cmds' = [ if i == ci then modifyIxCmd mn f c else c | (c, i) <- cmds `zip` [0..] ] 
 
-modifyIxCmd :: CmdIx -> (ShellCommand -> ShellCommand) -> Command -> Command
+modifyIxCmd :: CmdIx -> (Command -> Command) -> Command -> Command
 modifyIxCmd mn f c@(Command sc rs) = case mn of
-    []       -> Command (f sc) rs
+    []       -> f c
     (li: ns) -> Command (continue li ns f sc) rs 
   where
     continue i next f sc = case sc of 
@@ -111,6 +116,8 @@ modifyIxCmd mn f c@(Command sc rs) = case mn of
       where
         goList = modifyIxList next f 
 
+modSC :: (ShellCommand -> ShellCommand) -> Command -> Command
+modSC f (Command sc rs) = Command (f sc) rs
 
 pipeNext :: AndOr -> AndOr
 pipeNext (Or  _ p) = p
@@ -138,7 +145,7 @@ replaceExec orig new (SimpleCommand as (exec : args))
 replaceExec _ _ cmd = cmd 
 
 replaceExecByIxs :: CmdIx -> B.Word -> B.Word -> List -> List
-replaceExecByIxs ixs orig new list = modifyIxList ixs (replaceExec orig new) list
+replaceExecByIxs ixs orig new list = modifyIxList ixs (modSC $ replaceExec orig new) list
 
 checkExec :: String -> ShellCommand -> Bool
 checkExec e (SimpleCommand _ (exec: _))
@@ -182,3 +189,6 @@ getPipe :: AndOr -> Pipeline
 getPipe (And p _) = p
 getPipe (Or  p _) = p
 getPipe (Last  p) = p
+
+colon :: ShellCommand
+colon = SimpleCommand [] [[Char ':']]

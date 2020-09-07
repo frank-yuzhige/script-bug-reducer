@@ -72,7 +72,7 @@ runSanityCheck :: Env -> List -> IO (Maybe String)
 runSanityCheck env bash = do
   pass1 <- runItest bash "[Sanity Check]: Running the original interestingness test script..."
   if pass1 /= ExitSuccess then do
-    let bash' = replaceAllExec ccvar xccvar bash
+    let bash' = replaceAllExec ccvar xccvar [] bash
     pass2 <- runItest bash' "[Sanity Check]: Running the interestingness test script with CC replaced..."
     if pass2 == ExitSuccess then
       return Nothing
@@ -105,7 +105,10 @@ runReduction r env count = do
 
 reduceIteration :: Reducer -> Env -> ExceptT String IO Reducer
 reduceIteration reducer env = do
-  when debug $ liftIO $ printf "  Generating new script\n"
+  when debug $ liftIO $ do 
+    printf "  Generating new script\n"
+    printf "  Cached instructions: %s" 
+      (intercalate "," [ show (c, showByIxList c (getScript reducer)) | c <- getCaches reducer ])
   (mf, inss) <- except $ genNewBash reducer
   let count = length inss
   when debug $ liftIO $ printf "  Inspecting %d target%s: %s\n" 

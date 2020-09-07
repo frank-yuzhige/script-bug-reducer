@@ -21,8 +21,20 @@ data Env = Env {
   bashPath            :: FilePath,
   interestingnessPath :: FilePath,
   recoverMakefile     :: Bool,
+  isCache             :: Bool,
   isDebug             :: Bool
 } deriving (Eq, Show)
+
+initEnv :: Env
+initEnv = Env {
+  ccVar  = "gcc",
+  xccVar = "clang",
+  bashPath = "./build.sh",
+  interestingnessPath = "./itest.sh",
+  recoverMakefile = False,
+  isCache = False,
+  isDebug = False
+}
 
 parseArgs :: [String] -> (Env, String)
 parseArgs args = (e, fromDList w)
@@ -40,6 +52,9 @@ parseArg env arg@('-': xs)
     "debug"      -> record 
       "DEBUG ON!"
       env { isDebug = True } 
+    "cache"      -> record
+      "Cache files where possible"
+      env { isCache = True }
     _            -> warn $ printf "Invalid argument \"%s\"" arg
   | otherwise = case ps of
     "cvar"   -> record
@@ -61,16 +76,6 @@ parseArg env arg@('-': xs)
     warn w   = tell (toDList (w <> "\n")) >> return env 
 
 parseArg env arg = tell (toDList (printf "Error: Invalid argument \"%s\"\n" arg)) >> return env
-
-initEnv :: Env
-initEnv = Env {
-  ccVar  = "gcc",
-  xccVar = "clang",
-  bashPath = "./build.sh",
-  interestingnessPath = "./itest.sh",
-  recoverMakefile = False,
-  isDebug = False
-}
 
 printEnv :: (PrintfType f) => Env -> f
 printEnv env = printf (show env)
